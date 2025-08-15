@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Interactive Map of Indian Art History</title>
+  <!-- Leaflet CSS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <!-- Inter font (optional, nice look) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg: #0b1020;
+      --card: #121833;
+      --text: #e8ecff;
+      --muted: #b7c0ff;
+      --accent: #6aa9ff;
+      --accent-2:#58d1c9;
+      --border: #263164;
+    }
+    *{box-sizing: border-box}
+    html{scroll-behavior: smooth}
+    body{
+      margin:0; font-family: Inter, system-ui, Arial, sans-serif; color:var(--text); background:linear-gradient(180deg,#0b1020 0%, #0b1328 40%, #0a1533 100%);
+    }
+    header{
+      position:sticky; top:0; z-index:9999; backdrop-filter: blur(8px);
+      background: rgba(11,16,32,0.8); border-bottom:1px solid var(--border);
+    }
+    .wrap{max-width:1200px; margin:0 auto; padding:14px 18px; display:flex; align-items:center; gap:14px}
+    h1{font-size: clamp(20px, 3.2vw, 36px); margin:0; font-weight:800; letter-spacing:0.3px}
+    h1 a{color:var(--text); text-decoration:none}
+    h1 a:hover{color:var(--accent)}
+    .sub{color:var(--muted); font-size:14px}
+    .layout{display:grid; grid-template-columns: 1.1fr 0.9fr; gap:18px; max-width:1200px; margin:16px auto; padding:0 18px 24px}
+    #map{height: 70vh; width: 100%; border-radius:20px; border:1px solid var(--border); box-shadow: 0 10px 30px rgba(0,0,0,.35)}
+
+    .panel{
+      display:flex; flex-direction:column; gap:12px; max-height:70vh; overflow:auto; padding-right:4px
+    }
+    .card{background:linear-gradient(180deg,var(--card), #0f1733); border:1px solid var(--border); border-radius:18px; padding:14px; box-shadow: 0 6px 20px rgba(0,0,0,.25)}
+    .place{display:grid; grid-template-columns: 88px 1fr; gap:12px; align-items:center}
+    .place img{width:88px; height:66px; object-fit:cover; border-radius:12px; border:1px solid var(--border)}
+    .place h3{margin:0; font-size:16px}
+    .meta{font-size:12px; color:var(--muted)}
+    .btns{display:flex; gap:8px; margin-top:8px}
+    .btn{cursor:pointer; border:1px solid var(--border); background:#10183a; color:var(--text); padding:8px 10px; border-radius:12px; font-size:12px}
+    .btn:hover{border-color:var(--accent); box-shadow: 0 0 0 3px rgba(106,169,255,.15)}
+
+    .details{max-width:1200px; margin:8px auto 64px; padding:0 18px; display:grid; grid-template-columns: repeat(auto-fill,minmax(280px,1fr)); gap:16px}
+    .details .card{padding:0}
+    .hero{position:relative}
+    .hero img{width:100%; height:180px; object-fit:cover; border-top-left-radius:18px; border-top-right-radius:18px}
+    .hero .tag{position:absolute; top:8px; left:8px; background:rgba(16,24,58,.8); padding:6px 8px; border-radius:10px; font-size:12px; border:1px solid var(--border)}
+    .body{padding:14px}
+    .body h4{margin:0 0 6px 0}
+    .body p{margin:0; color:var(--muted); font-size:14px}
+    .jump{display:inline-flex; align-items:center; gap:6px; margin-top:10px; font-size:13px; color:var(--accent); text-decoration:none}
+
+    /* Tiny responsive tweak */
+    @media (max-width: 900px){
+      .layout{grid-template-columns: 1fr;}
+      #map{height: 60vh}
+    }
+
+    /* Leaflet default label color tweak for dark bg */
+    .leaflet-popup-content-wrapper, .leaflet-popup-tip{background:#0f1733; color:var(--text); border:1px solid var(--border)}
+    .leaflet-control-zoom a{background:#0f1733; color:var(--text); border-color:var(--border)}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1><a href="#map" id="titleJump">Interactive Map · Indian Art History</a></h1>
+      <div class="sub">Click the title to jump to the map. Select a place to fly the map and view its artifact.</div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section id="map" class="card"></section>
+    <aside class="panel" id="listPanel" aria-label="Places list"></aside>
+  </main>
+
+  <section class="details" id="detailsGrid" aria-label="Artifact details grid"></section>
+
+  <!-- Leaflet JS -->
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+
+  <script>
+    // 12 iconic locations (>= 10 as requested)
+    const PLACES = [
+      {
+        id:"ajanta",
+        name:"Ajanta Caves, Maharashtra",
+        coords:[20.5519, 75.7033],
+        period:"2nd c. BCE – 6th c. CE (Buddhist)",
+        artifact:"Bodhisattva Padmapani fresco",
+        image:"https://upload.wikimedia.org/wikipedia/commons/thumb/7/7d/Padmapani_Ajanta.jpg/640px-Padmapani_Ajanta.jpg",
+        blurb:"World‑famous murals in Cave 1 exemplify Gupta‑period painting and Buddhist devotional art."
+      },
+      {
+        id:"ellora",
+        name:"Ellora (Kailasa), Maharashtra",
+        coords:[20.0268, 75.1792],
+        period:"8th–9th c. CE (Rashtrakuta)",
+        artifact:"Kailasa Temple monolithic complex",
+        image:"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1c/Kailasa_temple_at_Ellora.jpg/640px-Kailasa_temple_at_Ellora.jpg",
+        blurb:"A single rock carved top‑down into a vast Shaiva temple; a marvel of Indian rock‑cut architecture."
+      },
+      {
+        id:"sanchi",
+        name:"Sanchi Stupa, Madhya Pradesh",
+        coords:[23.4802, 77.7390],
+        period:"3rd c. BCE – 1st c. CE",
+        artifact:"Torana gateway reliefs",
+        image:"https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Sanchi_Stupa_from_East.jpg/640px-Sanchi_Stupa_from_East.jpg",
+        blurb:"Narrative reliefs portray Jataka tales and early Buddhist symbolism around the Great Stupa."
+      },
+      {
+        id:"khajuraho",
+        name:"Khajuraho, Madhya Pradesh",
+        coords:[24.8481, 79.9199],
+        period:"10th–11th c. CE (Chandella)",
+        artifact:"Kandariya Mahadeva sculptural program",
+        image:"https://upload.wikimedia.org/wikipedia/commons/thumb/7/7a/Khajuraho_Group_of_Monuments_-_Kandariya_Mahadeva_Temple_02.jpg/640px-Kandariya_Mahadeva_Temple_02.jpg",
+        blurb:"Exquisite sandstone figures, dynamic poses, and temple iconography at their zenith."
+      },
+      {
+        id:"konark",
+        name:"Konark Sun Temple, Odisha",
+        coords:[19.8876, 86.0945],
+        period:"13th c. CE (Eastern Ganga)",
+        artifact:"Chariot Wheel (Sun God’s ratha)",
+        image:"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6e/Konark_Sun_Temple_Wheel.jpg/640px-Konark_Sun_Temple_Wheel.jpg",
+        blurb:"The iconic stone wheel doubles as a sundial and emblem of Kalinga sculpture."
+      },
+      {
+        id:"hampi",
+        name:"Hampi, Karnataka",
+        coords:[15.3350, 76.4600],
+        period:"14th–16th c. CE (Vijayanagara)",
+        artifact:"Vittala Temple Stone Chariot",
+        image:"https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Stone_chariot%2C_Vittala_temple%2C_Hampi.jpg/640px-Stone_chariot%2C_Vittala_temple%2C_Hampi.jpg",
+        blurb:"Granite ‘stone chariot’ and musical pillars illustrate imperial craftsmanship."
+      },
+      {
+        id:"thanjavur",
+        name:"Thanjavur (Brihadeeswarar), Tamil Nadu",
+        coords:[10.786999, 79.137825],
+        period:"11th c. CE (Chola)",
+        artifact:"Granite vimana & Chola bronzes",
+        image:"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d0/Brihadisvara_Temple%2C_Thanjavur%2C_Tamil_Nadu%2C_India.jpg/640px-Brihadisvara_Temple%2C_Thanjavur%2C_Tamil_Nadu%2C_India.jpg",
+        blurb:"Towering vimana and refined lost‑wax bronze tradition centered on Nataraja."
+      },
+      {
+        id:"nalanda",
+        name:"Nalanda, Bihar",
+        coords:[25.1367, 85.4433],
+        period:"5th–12th c. CE (Mahavihara)",
+        artifact:"Seal of the Nalanda Mahavihara",
+        image:"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1f/Nalanda_University_Ruins.jpg/640px-Nalanda_University_Ruins.jpg",
+        blurb:"Monastic university whose seals and terracottas spread Buddhist art across Asia."
+      },
+      {
+        id:"udaipur",
+        name:"Udaipur, Rajasthan",
+        coords:[24.576, 73.683],
+        period:"16th–19th c. CE (Mewar)",
+        artifact:"Mewar miniature painting (City Palace)",
+        image:"https://upload.wikimedia.org/wikipedia/commons/thumb/9/9d/Udaipur_City_Palace_Complex_2013.jpg/640px-Udaipur_City_Palace_Complex_2013.jpg",
+        blurb:"Royal atelier famed for bold colors and courtly narratives in miniature format."
+      },
+      {
+        id:"santiniketan",
+        name:"Santiniketan, West Bengal",
+        coords:[23.6778, 87.6828],
+        period:"20th c. CE (Tagore & Kala Bhavana)",
+        artifact:"Modernist murals & pedagogy",
+        image:"https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/Vishwa_Bharati_University.jpg/640px-Vishwa_Bharati_University.jpg",
+        blurb:"Nandalal Bose and Benode Behari pioneered contextual modernism in India."
+      },
+      {
+        id:"kochi",
+        name:"Kochi, Kerala",
+        coords:[9.963, 76.242],
+        period:"21st c. CE (Kochi–Muziris Biennale)",
+        artifact:"Contemporary installation (Aspinwall House)",
+        image:"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Aspinwall_House_Fort_Kochi.jpg/640px-Aspinwall_House_Fort_Kochi.jpg",
+        blurb:"India’s largest contemporary art biennale bridging global and local practices."
+      },
+      {
+        id:"chennai",
+        name:"Chennai (Govt. Museum), Tamil Nadu",
+        coords:[13.072, 80.253],
+        period:"10th–12th c. CE (Chola bronzes)",
+        artifact:"Nataraja (lost‑wax casting)",
+        image:"https://upload.wikimedia.org/wikipedia/commons/thumb/8/80/Nataraja_Chola_Bronze.jpg/512px-Nataraja_Chola_Bronze.jpg",
+        blurb:"Iconic dynamic bronze form of Shiva as cosmic dancer, pinnacle of Chola metalwork."
+      }
+    ];
+
+    // 1) Build Map
+    const map = L.map('map', { zoomControl: true, scrollWheelZoom: true });
+    const indiaCenter = [22.9734, 78.6569];
+    map.setView(indiaCenter, 5);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    // 2) Add markers and popups
+    const markerById = new Map();
+
+    PLACES.forEach(p => {
+      const marker = L.marker(p.coords).addTo(map);
+      marker.bindPopup(`
+        <div style="width:240px">
+          <div style="font-weight:700; margin-bottom:6px">${p.name}</div>
+          <div style="font-size:12px; color:#b7c0ff; margin-bottom:6px">${p.period}</div>
+          <img src="${p.image}" alt="${p.artifact}" style="width:100%; height:120px; object-fit:cover; border-radius:10px; border:1px solid #263164; margin-bottom:6px"/>
+          <div style="font-size:13px; margin-bottom:8px"><strong>${p.artifact}</strong></div>
+          <a href="#details-${p.id}" style="color:#6aa9ff; text-decoration:none">View details ↓</a>
+        </div>
+      `);
+      markerById.set(p.id, marker);
+    });
+
+    // 3) Build sidebar list
+    const panel = document.getElementById('listPanel');
+    panel.innerHTML = PLACES.map(p => `
+      <article class="card">
+        <div class="place">
+          <img src="${p.image}" alt="${p.artifact}">
+          <div>
+            <h3><button class="btn" data-jump="${p.id}" title="Fly to on map">${p.name}</button></h3>
+            <div class="meta">${p.period}</div>
+            <div class="btns">
+              <a class="btn" href="#map" data-jump="${p.id}">Go to map</a>
+              <a class="btn" href="#details-${p.id}">Details</a>
+            </div>
+          </div>
+        </div>
+      </article>
+    `).join('');
+
+    // Sidebar interactions: fly to marker and open popup
+    panel.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-jump]');
+      if(!btn) return;
+      const id = btn.getAttribute('data-jump');
+      const marker = markerById.get(id);
+      if(marker){
+        document.getElementById('map').scrollIntoView({behavior:'smooth'});
+        map.flyTo(marker.getLatLng(), 7, {duration: 0.8});
+        setTimeout(()=> marker.openPopup(), 850);
+      }
+    });
+
+    // 4) Build details grid
+    const details = document.getElementById('detailsGrid');
+    details.innerHTML = PLACES.map(p => `
+      <article class="card" id="details-${p.id}">
+        <div class="hero">
+          <img src="${p.image}" alt="${p.artifact}">
+          <span class="tag">${p.period}</span>
+        </div>
+        <div class="body">
+          <h4>${p.name}</h4>
+          <p><strong>${p.artifact}:</strong> ${p.blurb}</p>
+          <a href="#map" class="jump" data-jump="${p.id}">↖ Back to map & fly here</a>
+        </div>
+      </article>
+    `).join('');
+
+    // Delegate clicks from detail cards to jump back to map and fly
+    details.addEventListener('click', (e)=>{
+      const a = e.target.closest('[data-jump]');
+      if(!a) return;
+      const id = a.getAttribute('data-jump');
+      const marker = markerById.get(id);
+      if(marker){
+        document.getElementById('map').scrollIntoView({behavior:'smooth'});
+        map.flyTo(marker.getLatLng(), 7, {duration: 0.8});
+        setTimeout(()=> marker.openPopup(), 850);
+      }
+    });
+
+    // Clicking the big heading scrolls to map (handled by anchor). Extra: focus map for accessibility.
+    document.getElementById('titleJump').addEventListener('click', ()=>{
+      setTimeout(()=> map.getContainer().focus?.(), 400);
+    });
+  </script>
+</body>
+</html>
